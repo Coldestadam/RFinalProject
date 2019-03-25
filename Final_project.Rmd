@@ -1,0 +1,115 @@
+---
+title: "Final_Project"
+author: "Adam Villarreal, Yang Li and Nick Ivy"
+date: "12/5/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+#Introduction
+Diamonds have always been a important consumer luxury good, because the beauty of the diamonds are attractive to consumers. Also, it is a very important investment today, since the supply has been restricted due to many reasons. Because of this we are interested to predict the price of the diamonds based on its different attributes. First of all, we will find the relationships between the different attributes of the diamonds and a summary of our data. Then we will use different Machine Learning models based on our summary of the data to predict the price of diamonds. We will discuss our steps in developing different Machine Learning models to find the best model that gives the most accurate predictions.
+```{r load}
+library(tidyverse)
+library(rpart)
+library(modelr)
+library(randomForest)
+library(ggplot2)
+diamonds <- read.csv("/Users/adam/Documents/Intro to Data Science/diamonds.csv")
+```
+
+```{r summary}
+summary(diamonds)
+```
+
+#Analyzing the Data
+
+##What was the relationship between the carat and the price?
+```{r 1st plot}
+ggplot(diamonds, aes(x = carat, y = price, color = clarity)) + geom_point()
+```
+From this graph we conclude that as the carat increases, the price of the diamond also increases. However, we discovered that the clarity has an impact of on the price of the outliers. Explaining that the larger carat diamonds with the lowest clarity have a relative price to the diamonds with a smaller carat and better clarity. The best clarity "IF" shows the strongest relationship between the carat weight and the high price. While the worst clarity "I1" shows the weakest relationship between the carat weight and the high price.
+
+##What is the relationship between the clarity and depth of the diamonds?
+```{r 2nd plot}
+ggplot(diamonds, aes(x = clarity, y = depth)) + geom_boxplot()
+```
+The graph shows that for every clarity level, that the average of the depths are relatively the same. We believe that this true because of some industry standard. Furthermore, we relized that the best clarity level "IF" has the lowest maximum depth, while the worst, "I1", has the highest maximum depth. We may conclude that the smaller the depth, the better clarity it might be.
+
+##What is the relationship between the table of the diamond and its price?
+```{r 3rd plot}
+ggplot(diamonds, aes(x = table, y = price)) + geom_line()
+```
+First, we see that most of the diamonds' tables are between 50% to 70% of their average diameter, resulting in a higher price for those diamonds. However, there is an outlier that as the table increases, then the price also goes up with it. We guess that the market has more demand for diamonds that have tables between 50% to 70%.
+
+#First ML Model
+We want to create a Machine Learning model that is able to learn from the data in the diamonds dataset, and be able to make predictions of the price of different features of the data.
+```{R ML model}
+fit <- rpart(price ~ carat + cut + color + clarity + depth + table + x + y + z, data = diamonds)
+plot(fit, uniform = T)
+text(fit, cex = 0.6)
+
+print("Making predictions for the following diamonds:")
+print(head(diamonds))
+print("The predictions are:")
+print(predict(fit, head(diamonds)))
+print("Actual price:")
+print(head(diamonds$price))
+
+mae(fit, data = diamonds)
+```
+This is our first model, but we trained the model on the whole dataset, so it does not work well with data that it has not seen. Also the model needs improvement from since it has a high average error.
+
+#Second ML Model
+This time we are going to split the data into a training set and a testing set using the library "modelr". The goal of splitting the data is to train the model with only the training set, so we can test it on new data (testing data) to observe its performance.
+
+```{r Model2}
+library(modelr)
+splitdata <- resample_partition(diamonds, c(test = 0.3, train = 0.7))
+#to see the dimention of my splited dataset
+lapply(splitdata, dim)
+#Fit a new model with my new training data set
+fit2 <- rpart(price ~ carat + cut + color + clarity + depth + table + x + y + z, data = splitdata$train)
+#evaluating my new model
+mae(model = fit2, data = splitdata$test)
+```
+The error increased, but this tells us that there is still room for improvement. Also the large error tells us the it really underfits the data. Our next step is to create a function to avoid repitetion in testing the maximum depth of our decision tree.
+```{r mae funciton}
+get_mae <- function(maxdepth, target, predictors, training_data, testing_data){
+    predictors <- paste(predictors, collapse="+")
+    formula <- as.formula(paste(target, "~", predictors, sep = ""))
+    model <- rpart(formula, data = training_data, control = rpart.control(maxdepth = maxdepth))
+    mae <- mae(model, testing_data)
+    return(mae)
+}
+```
+We will use the get_mae() function to find the maximum depth of our decision tree.
+```{r maxdepth}
+target <- "price"
+predictors <- c("carat", "cut", "color", "clarity", "depth", "table", "x", "y", "z")
+for(i in 1:20){
+    mae <- get_mae(i, target, predictors, training_data = splitdata$train, testing_data = splitdata$test)
+    print(glue::glue("Maximum depth: ", i, "\t MAE: ", mae )) 
+}
+```
+We see that the maximum depth is 5 for our decison tree, and our current tree already has a depth of 5, so we decide to use a more sophisticated Machine Learning model which is a random forest.
+
+##Third ML Model
+This is our Random Forest Machine Learning Model, we want to see if this can help us lower the mean average error of our predictions.
+
+```{r randomforest, eval = FALSE}
+library(randomForest)
+#fitting my randomforest model:
+myrandomForest <- randomForest(price ~ carat + cut + color + clarity + depth + table + x + y + z, data = splitdata$train)
+#calculating mae for this randomforest model
+mae(model = myrandomForest, data = splitdata$test)
+```
+For the sake of time, we are not going to run it because this this function that contains many computations. We have ran this through a cloud gpu, and we will show you the results of our Kaggle Notebook as a screenshot.
+```{r screenshot, out.width='80%'}
+knitr::include_graphics("/Users/adam/Desktop/kaggle.png")
+```
+The random forest significantly improved the prediction accuaracy by lowering the mean average error from 834.9 to 281.9. The model decreased the mean average error by 553, which makes the random forest model the best model from our other models.
+
+#Conclusion
+We found that the relationship between the carat of the diamond is linear to the price of the diamond, meanwhile the clarity also has a big role for the price of the diamond. The relationship between the depth and the clarity of the diamond is the same for all clarity levels, but the better clarity levels may have a lower maximum depth. We found that the relationship between the price and the table of the diamond is really complicated. The diamonds that have tables of 50% to 70% will be most popular, giving it a higher price. Then we created the first machine learning model, but it was trained on all the data and it had a high mean average error. For the second one we decided to split the data to a training and a testing set, so we can really test our model on new data it has not seen. The mean average error was still large so we wanted to check what the maximum depth of our decision tree should be, with the get_mae() function we wrote. Nevertheless, the result of the maximum depth is five which our decision tree already has, so we decided to use a more sophisticated model. The name of this new model is a random forest which has 500 decision trees by default, and we were satisfied by the result of decreasing our mean average error provided by the model.
